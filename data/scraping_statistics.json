@@ -1,0 +1,14 @@
+{
+  "total_articles": 124,
+  "total_definitions": 40,
+  "total_words": 9628,
+  "articles_with_definitions": 3,
+  "articles_with_amendments": 24,
+  "articles_with_references": 22,
+  "failed_articles": [
+    125,
+    126,
+    127,
+    128
+  ]
+}
