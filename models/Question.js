@@ -39,7 +39,7 @@ const questionSchema = new mongoose.Schema(
         category: {
             type: String,
             required: [true, 'La catégorie est requise'],
-            enum: ['signalisation', 'regles', 'priorites', 'infractions', 'securite', 'mecanique', 'conduite'],
+            enum: ['signalisation', 'regles', 'priorites', 'infractions', 'securite', 'mecanique', 'conduite', 'poids-lourd'],
         },
         difficulty: {
             type: String,

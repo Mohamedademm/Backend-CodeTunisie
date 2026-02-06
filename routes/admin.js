@@ -95,6 +95,41 @@ router.get('/users', async (req, res) => {
     }
 });
 
+// @route   POST /api/admin/users
+// @desc    Create a new user
+// @access  Admin
+router.post('/users', async (req, res) => {
+    try {
+        const { name, email, password, role, isPremium } = req.body;
+
+        // Check if user exists
+        let user = await User.findOne({ email });
+        if (user) {
+            return res.status(400).json({ success: false, message: 'Un utilisateur avec cet email existe déjà' });
+        }
+
+        user = new User({
+            name,
+            email,
+            password,
+            role: role || 'user',
+            isPremium: isPremium || false
+        });
+
+        await user.save();
+
+        // Convert to object and remove sensitive data
+        const userObj = user.toObject();
+        delete userObj.password;
+        delete userObj.refreshToken;
+
+        res.status(201).json({ success: true, user: userObj });
+    } catch (error) {
+        console.error('Create user error:', error);
+        res.status(500).json({ success: false, message: 'Erreur lors de la création de l\'utilisateur' });
+    }
+});
+
 // @route   PUT /api/admin/users/:id
 // @desc    Update user (role, premium status)
 // @access  Admin

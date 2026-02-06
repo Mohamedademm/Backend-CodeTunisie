@@ -83,7 +83,7 @@ const userSchema = new mongoose.Schema(
 );
 
 // Indexes for performance optimization
-userSchema.index({ email: 1 }); // Already unique, but explicit index
+// Indexes for performance optimization
 userSchema.index({ role: 1 });
 userSchema.index({ isPremium: 1 });
 userSchema.index({ createdAt: -1 });

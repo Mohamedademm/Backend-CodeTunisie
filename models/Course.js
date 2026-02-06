@@ -21,7 +21,7 @@ const courseSchema = new mongoose.Schema(
             type: String,
             required: [true, 'La catégorie est requise'],
             enum: {
-                values: ['signalisation', 'regles', 'priorites', 'infractions', 'securite', 'mecanique', 'conduite', 'conseils', 'general'],
+                values: ['signalisation', 'regles', 'priorites', 'infractions', 'securite', 'mecanique', 'conduite', 'conseils', 'general', 'poids-lourd'],
                 message: 'Catégorie invalide',
             },
         },
