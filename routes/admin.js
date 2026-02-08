@@ -1,10 +1,47 @@
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
 const User = require('../models/User');
 const Course = require('../models/Course');
 const Video = require('../models/Video');
 const Test = require('../models/Test');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
+
+// Configure multer for question image uploads
+const questionImageStorage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        const uploadDir = path.join(__dirname, '../uploads/questions');
+        // Create directory if it doesn't exist
+        if (!fs.existsSync(uploadDir)) {
+            fs.mkdirSync(uploadDir, { recursive: true });
+        }
+        cb(null, uploadDir);
+    },
+    filename: function (req, file, cb) {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        cb(null, 'question-' + uniqueSuffix + path.extname(file.originalname));
+    }
+});
+
+const questionImageUpload = multer({
+    storage: questionImageStorage,
+    limits: {
+        fileSize: 2 * 1024 * 1024, // 2MB max
+    },
+    fileFilter: function (req, file, cb) {
+        const allowedTypes = /jpeg|jpg|png|webp/;
+        const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+        const mimetype = allowedTypes.test(file.mimetype);
+
+        if (mimetype && extname) {
+            return cb(null, true);
+        } else {
+            cb(new Error('Seules les images (JPEG, PNG, WebP) sont autorisées'));
+        }
+    }
+});
 
 // Middleware to ensure all routes in this file require admin access
 // If requireAdmin is not exported from auth.js, we will define it inline or update auth.js
@@ -249,6 +286,72 @@ router.get('/settings', (req, res) => {
 router.put('/settings', (req, res) => {
     siteSettings = { ...siteSettings, ...req.body };
     res.json({ success: true, settings: siteSettings });
+});
+
+// @route   POST /api/admin/upload-question-image
+// @desc    Upload image for a question
+// @access  Admin
+router.post('/upload-question-image', questionImageUpload.single('image'), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({
+                success: false,
+                message: 'Aucune image fournie'
+            });
+        }
+
+        // Construct the URL for the uploaded image
+        const imageUrl = `/uploads/questions/${req.file.filename}`;
+
+        res.json({
+            success: true,
+            message: 'Image uploadée avec succès',
+            data: {
+                url: imageUrl,
+                filename: req.file.filename,
+                size: req.file.size,
+                uploadedAt: new Date()
+            }
+        });
+    } catch (error) {
+        console.error('Upload error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Erreur lors de l\'upload de l\'image',
+            error: error.message
+        });
+    }
+});
+
+// @route   DELETE /api/admin/delete-question-image/:filename
+// @desc    Delete a question image
+// @access  Admin
+router.delete('/delete-question-image/:filename', async (req, res) => {
+    try {
+        const { filename } = req.params;
+        const filePath = path.join(__dirname, '../uploads/questions', filename);
+
+        // Check if file exists
+        if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+            res.json({
+                success: true,
+                message: 'Image supprimée avec succès'
+            });
+        } else {
+            res.status(404).json({
+                success: false,
+                message: 'Image non trouvée'
+            });
+        }
+    } catch (error) {
+        console.error('Delete error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Erreur lors de la suppression de l\'image',
+            error: error.message
+        });
+    }
 });
 
 module.exports = router;

@@ -33,8 +33,21 @@ const questionSchema = new mongoose.Schema(
             required: [true, 'L\'explication est requise'],
         },
         image: {
-            type: String, // URL of image if question has one
-            default: '',
+            url: {
+                type: String,
+                default: '',
+            },
+            filename: {
+                type: String,
+                default: '',
+            },
+            size: {
+                type: Number,
+                default: 0,
+            },
+            uploadedAt: {
+                type: Date,
+            },
         },
         category: {
             type: String,

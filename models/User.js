@@ -87,7 +87,6 @@ const userSchema = new mongoose.Schema(
 userSchema.index({ role: 1 });
 userSchema.index({ isPremium: 1 });
 userSchema.index({ createdAt: -1 });
-userSchema.index({ googleId: 1 }, { sparse: true });
 userSchema.index({ resetPasswordToken: 1 }, { sparse: true });
 
 // Hash password before saving
