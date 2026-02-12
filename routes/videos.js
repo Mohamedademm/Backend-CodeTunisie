@@ -5,19 +5,14 @@ const path = require('path');
 const fs = require('fs');
 const Video = require('../models/Video');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
-
-// --- Multer configuration for video uploads ---
-// --- Multer configuration for video uploads ---
 const { storage, cloudinary } = require('../config/cloudinary');
 
-// Helper to delete from Cloudinary
 const deleteFromCloudinary = async (url, resourceType = 'video') => {
     if (!url || !url.includes('cloudinary')) return;
     try {
-        // Extract public ID: .../upload/v123/codetunisiepro/filename.mp4 -> codetunisiepro/filename
         const splitUrl = url.split('/');
         const filenameWithExt = splitUrl[splitUrl.length - 1];
-        const folder = splitUrl[splitUrl.length - 2]; // 'codetunisiepro'
+        const folder = splitUrl[splitUrl.length - 2];
         const filename = filenameWithExt.split('.')[0];
         const publicId = `${folder}/${filename}`;
 
@@ -27,7 +22,6 @@ const deleteFromCloudinary = async (url, resourceType = 'video') => {
     }
 };
 
-// Helper to delete local file (legacy)
 const deleteLocalFile = (url) => {
     if (!url || !url.startsWith('/uploads/')) return;
     const filePath = path.join(__dirname, '..', url);
@@ -41,7 +35,7 @@ const deleteLocalFile = (url) => {
 };
 
 const videoUpload = multer({
-    storage: storage, // Use Cloudinary storage
+    storage: storage,
     fileFilter: (req, file, cb) => {
         const allowedMimes = [
             'video/mp4', 'video/avi', 'video/x-msvideo', 'video/mov',
@@ -55,18 +49,14 @@ const videoUpload = multer({
         }
     },
     limits: {
-        fileSize: 100 * 1024 * 1024, // 100 MB
+        fileSize: 100 * 1024 * 1024,
     },
 });
 
-// @route   GET /api/videos
-// @desc    Get all videos
-// @access  Public
 router.get('/', async (req, res) => {
     try {
         const { category, isPremium } = req.query;
 
-        // Build filter
         const filter = { isPublished: true };
         if (category) filter.category = category;
         if (isPremium !== undefined) filter.isPremium = isPremium === 'true';
@@ -87,9 +77,6 @@ router.get('/', async (req, res) => {
     }
 });
 
-// @route   GET /api/videos/:id
-// @desc    Get single video
-// @access  Public
 router.get('/:id', async (req, res) => {
     try {
         const video = await Video.findById(req.params.id);
@@ -101,7 +88,6 @@ router.get('/:id', async (req, res) => {
             });
         }
 
-        // Increment view count
         video.viewCount += 1;
         await video.save();
 
@@ -118,9 +104,6 @@ router.get('/:id', async (req, res) => {
     }
 });
 
-// @route   POST /api/videos
-// @desc    Create a video (URL or file upload)
-// @access  Private/Admin
 router.post('/', requireAuth, requireAdmin, videoUpload.single('videoFile'), async (req, res) => {
     try {
         const { title, description, videoUrl, thumbnail, category, duration, isPremium } = req.body;
@@ -135,14 +118,10 @@ router.post('/', requireAuth, requireAdmin, videoUpload.single('videoFile'), asy
         };
 
         if (req.file) {
-            // File was uploaded to Cloudinary
             videoData.videoType = 'upload';
-            videoData.videoUrl = req.file.path; // Cloudinary URL
+            videoData.videoUrl = req.file.path;
 
-            // Auto-generate thumbnail if not provided
             if (!videoData.thumbnail) {
-                // Cloudinary allows getting a thumbnail by changing extension to .jpg
-                // Example: .../video/upload/v123/myvideo.mp4 -> .../video/upload/v123/myvideo.jpg
                 videoData.thumbnail = req.file.path.replace(/\.[^/.]+$/, ".jpg");
             }
         } else if (videoUrl) {
@@ -164,7 +143,6 @@ router.post('/', requireAuth, requireAdmin, videoUpload.single('videoFile'), asy
         });
     } catch (error) {
         console.error('Create video error:', error);
-        // If upload success but DB failure, try to delete from Cloudinary
         if (req.file && req.file.filename) {
             await cloudinary.uploader.destroy(req.file.filename, { resource_type: 'video' });
         }
@@ -176,9 +154,6 @@ router.post('/', requireAuth, requireAdmin, videoUpload.single('videoFile'), asy
     }
 });
 
-// @route   PUT /api/videos/:id
-// @desc    Update a video
-// @access  Private/Admin
 router.put('/:id', requireAuth, requireAdmin, videoUpload.single('videoFile'), async (req, res) => {
     try {
         const existingVideo = await Video.findById(req.params.id);
@@ -195,7 +170,6 @@ router.put('/:id', requireAuth, requireAdmin, videoUpload.single('videoFile'), a
         }
 
         if (req.file) {
-            // New file uploaded — delete old file
             if (existingVideo.videoType === 'upload' && existingVideo.videoUrl) {
                 await deleteFromCloudinary(existingVideo.videoUrl, 'video');
                 deleteLocalFile(existingVideo.videoUrl);
@@ -203,7 +177,6 @@ router.put('/:id', requireAuth, requireAdmin, videoUpload.single('videoFile'), a
             updateData.videoType = 'upload';
             updateData.videoUrl = req.file.path;
         } else if (updateData.videoUrl && updateData.videoUrl !== existingVideo.videoUrl) {
-            // URL changed — delete old file if it was an upload
             if (existingVideo.videoType === 'upload' && existingVideo.videoUrl) {
                 await deleteFromCloudinary(existingVideo.videoUrl, 'video');
                 deleteLocalFile(existingVideo.videoUrl);
@@ -231,9 +204,6 @@ router.put('/:id', requireAuth, requireAdmin, videoUpload.single('videoFile'), a
     }
 });
 
-// @route   DELETE /api/videos/:id
-// @desc    Delete a video (and its file if uploaded)
-// @access  Private/Admin
 router.delete('/:id', requireAuth, requireAdmin, async (req, res) => {
     try {
         const video = await Video.findById(req.params.id);
@@ -245,7 +215,6 @@ router.delete('/:id', requireAuth, requireAdmin, async (req, res) => {
             });
         }
 
-        // Delete the file if it was an upload
         if (video.videoType === 'upload' && video.videoUrl) {
             await deleteFromCloudinary(video.videoUrl, 'video');
             deleteLocalFile(video.videoUrl);
@@ -266,7 +235,6 @@ router.delete('/:id', requireAuth, requireAdmin, async (req, res) => {
     }
 });
 
-// Multer error handling middleware
 router.use((err, req, res, next) => {
     if (err instanceof multer.MulterError) {
         if (err.code === 'LIMIT_FILE_SIZE') {

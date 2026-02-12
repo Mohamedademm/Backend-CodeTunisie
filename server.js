@@ -6,24 +6,18 @@ const rateLimit = require('express-rate-limit');
 const connectDB = require('./config/database');
 const { errorHandler, notFound } = require('./middleware/errorHandler');
 
-// Initialize express app
 const app = express();
 
-// Connect to MongoDB
-// Connect to MongoDB
 connectDB();
-require('./config/passport'); // Passport config
+require('./config/passport');
 
-// Global Passport middleware
 const passport = require('passport');
 app.use(passport.initialize());
 
-
-// Security middleware
 app.use(helmet({
     crossOriginResourcePolicy: { policy: "cross-origin" },
     hsts: {
-        maxAge: 31536000, // 1 year
+        maxAge: 31536000,
         includeSubDomains: true,
         preload: true
     },
@@ -37,12 +31,9 @@ app.use(helmet({
     },
 }));
 
-// Compression middleware for better performance
 const compression = require('compression');
 app.use(compression());
 
-// CORS configuration
-// CORS configuration
 const corsOptions = {
     origin: function (origin, callback) {
         const allowedOrigins = [
@@ -53,7 +44,6 @@ const corsOptions = {
             'http://localhost:5175'
         ].filter(Boolean);
 
-        // Allow requests with no origin (like mobile apps or curl requests)
         if (!origin) return callback(null, true);
 
         if (allowedOrigins.indexOf(origin) !== -1 || origin.startsWith('http://localhost:')) {
@@ -67,29 +57,22 @@ const corsOptions = {
 };
 app.use(cors(corsOptions));
 
-// Body parser middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Rate limiting with custom limiters
 const { apiLimiter } = require('./middleware/rateLimiter');
 app.use('/api/', apiLimiter);
 
-// Serve uploaded files
 const path = require('path');
 const uploadsPath = path.join(__dirname, 'uploads');
-console.log('📁 Serving static files from:', uploadsPath);
-console.log('📁 __dirname:', __dirname);
 app.use('/uploads', express.static(uploadsPath));
 
-// Swagger Documentation
 const swaggerUi = require('swagger-ui-express');
 const YAML = require('yamljs');
 const swaggerDocument = YAML.load('./swagger.yaml');
 
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
-// Routes
 app.get('/', (req, res) => {
     res.json({
         success: true,
@@ -98,7 +81,6 @@ app.get('/', (req, res) => {
     });
 });
 
-// Health check endpoint for Docker
 app.get('/api/health', (req, res) => {
     res.status(200).json({
         success: true,
@@ -108,7 +90,6 @@ app.get('/api/health', (req, res) => {
     });
 });
 
-// API Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/courses', require('./routes/courses'));
 app.use('/api/videos', require('./routes/videos'));
@@ -119,15 +100,11 @@ app.use('/api/admin', require('./routes/admin'));
 app.use('/api/articles', require('./routes/articles'));
 app.use('/api/assistant', require('./routes/assistant'));
 
-// Error handling middleware (must be last)
 app.use(notFound);
 app.use(errorHandler);
 
-// Start server (only if not in Vercel)
-// Start server
 const PORT = process.env.PORT || 5000;
 
-// Only start listening if run directly (Render/Local), not when imported (Vercel)
 if (require.main === module) {
     app.listen(PORT, () => {
         console.log(`🚀 Server running on port ${PORT}`);
@@ -135,5 +112,4 @@ if (require.main === module) {
     });
 }
 
-// Export for Vercel
 module.exports = app;

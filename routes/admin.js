@@ -8,16 +8,13 @@ const Course = require('../models/Course');
 const Video = require('../models/Video');
 const Test = require('../models/Test');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
-
-// Configure multer for question image uploads
 const { storage, cloudinary } = require('../config/cloudinary');
+
 const questionImageUpload = multer({ storage });
 
-// ... (middleware remains the same)
+router.use(requireAuth);
+router.use(requireAdmin);
 
-// @route   POST /api/admin/upload-question-image
-// @desc    Upload image for a question
-// @access  Admin
 router.post('/upload-question-image', questionImageUpload.single('image'), async (req, res) => {
     try {
         if (!req.file) {
@@ -31,9 +28,9 @@ router.post('/upload-question-image', questionImageUpload.single('image'), async
             success: true,
             message: 'Image uploadée avec succès',
             data: {
-                url: req.file.path, // Cloudinary URL
-                filename: req.file.filename, // Cloudinary public_id
-                size: req.file.size, // Note: might not be accurate from Cloudinary response immediately, but usually available
+                url: req.file.path,
+                filename: req.file.filename,
+                size: req.file.size,
                 uploadedAt: new Date()
             }
         });
@@ -47,25 +44,12 @@ router.post('/upload-question-image', questionImageUpload.single('image'), async
     }
 });
 
-// @route   DELETE /api/admin/delete-question-image/:filename
-// @desc    Delete a question image
-// @access  Admin
 router.delete('/delete-question-image/:filename', async (req, res) => {
     try {
         const { filename } = req.params;
-        // filename here should be the public_id, e.g. "codetunisiepro/question-..."
-        // However, standard params extraction might split by slash. 
-        // We'll need to ensure we get the full public_id. 
-        // For simplicity, if the frontend sends "codetunisiepro/foo", it might be encoded.
+        const publicId = decodeURIComponent(filename);
 
-        // Actually, if the filename param is just the last part, we might need to prepend folder if not provided.
-        // But req.file.filename usually includes the folder.
-
-        // Let's assume filename passed is the full public_id or we construct it.
-        // If the previous code sent "question-123.jpg", new code sends "codetunisiepro/question-123".
-
-        // Handle deletion:
-        await cloudinary.uploader.destroy(filename);
+        await cloudinary.uploader.destroy(publicId);
 
         res.json({
             success: true,
@@ -82,15 +66,6 @@ router.delete('/delete-question-image/:filename', async (req, res) => {
     }
 });
 
-// Middleware to ensure all routes in this file require admin access
-// If requireAdmin is not exported from auth.js, we will define it inline or update auth.js
-// Based on typical patterns, let's assume valid auth middleware usage.
-router.use(requireAuth);
-router.use(requireAdmin);
-
-// @route   GET /api/admin/stats
-// @desc    Get dashboard statistics
-// @access  Admin
 router.get('/stats', async (req, res) => {
     try {
         const totalUsers = await User.countDocuments();
@@ -99,16 +74,13 @@ router.get('/stats', async (req, res) => {
         const totalVideos = await Video.countDocuments();
         const totalTests = await Test.countDocuments();
 
-        // Mock revenue for now as Payment model might not have data yet
-        const totalRevenue = premiumUsers * 40; // Assuming 40 DT per user as rough estimate
+        const totalRevenue = premiumUsers * 40;
 
-        // Get recent 5 users
         const recentUsers = await User.find()
             .select('-password -refreshToken')
             .sort({ createdAt: -1 })
             .limit(5);
 
-        // Simple growth data (mock for now as we might not have historical tracking yet)
         const userGrowth = [
             { date: 'Jan', count: Math.floor(totalUsers * 0.5) },
             { date: 'Feb', count: Math.floor(totalUsers * 0.6) },
@@ -131,7 +103,7 @@ router.get('/stats', async (req, res) => {
                 totalCourses,
                 totalVideos,
                 totalTests,
-                totalQuestions: 0, // Placeholder
+                totalQuestions: 0,
                 totalRevenue,
                 recentUsers,
                 userGrowth,
@@ -144,9 +116,6 @@ router.get('/stats', async (req, res) => {
     }
 });
 
-// @route   GET /api/admin/users
-// @desc    Get all users with filtering
-// @access  Admin
 router.get('/users', async (req, res) => {
     try {
         const { search, role, isPremium } = req.query;
@@ -171,14 +140,10 @@ router.get('/users', async (req, res) => {
     }
 });
 
-// @route   POST /api/admin/users
-// @desc    Create a new user
-// @access  Admin
 router.post('/users', async (req, res) => {
     try {
         const { name, email, password, role, isPremium } = req.body;
 
-        // Check if user exists
         let user = await User.findOne({ email });
         if (user) {
             return res.status(400).json({ success: false, message: 'Un utilisateur avec cet email existe déjà' });
@@ -194,7 +159,6 @@ router.post('/users', async (req, res) => {
 
         await user.save();
 
-        // Convert to object and remove sensitive data
         const userObj = user.toObject();
         delete userObj.password;
         delete userObj.refreshToken;
@@ -206,9 +170,6 @@ router.post('/users', async (req, res) => {
     }
 });
 
-// @route   PUT /api/admin/users/:id
-// @desc    Update user (role, premium status)
-// @access  Admin
 router.put('/users/:id', async (req, res) => {
     try {
         const { role, isPremium } = req.body;
@@ -228,9 +189,6 @@ router.put('/users/:id', async (req, res) => {
     }
 });
 
-// @route   DELETE /api/admin/users/:id
-// @desc    Delete user
-// @access  Admin
 router.delete('/users/:id', async (req, res) => {
     try {
         await User.findByIdAndDelete(req.params.id);
@@ -240,9 +198,6 @@ router.delete('/users/:id', async (req, res) => {
     }
 });
 
-// @route   GET /api/admin/courses
-// @desc    Get all courses for admin
-// @access  Admin
 router.get('/courses', async (req, res) => {
     try {
         const courses = await Course.find().sort({ createdAt: -1 });
@@ -252,9 +207,6 @@ router.get('/courses', async (req, res) => {
     }
 });
 
-// @route   DELETE /api/admin/courses/:id
-// @desc    Delete course
-// @access  Admin
 router.delete('/courses/:id', async (req, res) => {
     try {
         await Course.findByIdAndDelete(req.params.id);
@@ -264,9 +216,6 @@ router.delete('/courses/:id', async (req, res) => {
     }
 });
 
-// @route   GET /api/admin/videos
-// @desc    Get all videos
-// @access  Admin
 router.get('/videos', async (req, res) => {
     try {
         const videos = await Video.find().sort({ createdAt: -1 });
@@ -276,9 +225,6 @@ router.get('/videos', async (req, res) => {
     }
 });
 
-// @route   DELETE /api/admin/videos/:id
-// @desc    Delete video
-// @access  Admin
 router.delete('/videos/:id', async (req, res) => {
     try {
         await Video.findByIdAndDelete(req.params.id);
@@ -288,9 +234,6 @@ router.delete('/videos/:id', async (req, res) => {
     }
 });
 
-// @route   GET /api/admin/payments
-// @desc    Get all payments
-// @access  Admin
 router.get('/payments', async (req, res) => {
     try {
         const Payment = require('../models/Payment');
@@ -303,7 +246,6 @@ router.get('/payments', async (req, res) => {
     }
 });
 
-// Mock Settings (In-memory for now, could be moved to DB later)
 let siteSettings = {
     siteName: 'CodeTunisiePro',
     maintenanceMode: false,
@@ -312,79 +254,13 @@ let siteSettings = {
     themeColor: '#3b82f6'
 };
 
-// @route   GET /api/admin/settings
-// @desc    Get site settings
-// @access  Admin
 router.get('/settings', (req, res) => {
     res.json({ success: true, settings: siteSettings });
 });
 
-// @route   PUT /api/admin/settings
-// @desc    Update site settings
-// @access  Admin
 router.put('/settings', (req, res) => {
     siteSettings = { ...siteSettings, ...req.body };
     res.json({ success: true, settings: siteSettings });
-});
-
-// @route   POST /api/admin/upload-question-image
-// @desc    Upload image for a question
-// @access  Admin
-router.post('/upload-question-image', questionImageUpload.single('image'), async (req, res) => {
-    try {
-        if (!req.file) {
-            return res.status(400).json({
-                success: false,
-                message: 'Aucune image fournie'
-            });
-        }
-
-        // Construct the URL for the uploaded image
-        const imageUrl = `/uploads/questions/${req.file.filename}`;
-
-        res.json({
-            success: true,
-            message: 'Image uploadée avec succès',
-            data: {
-                url: imageUrl,
-                filename: req.file.filename,
-                size: req.file.size,
-                uploadedAt: new Date()
-            }
-        });
-    } catch (error) {
-        console.error('Upload error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Erreur lors de l\'upload de l\'image',
-            error: error.message
-        });
-    }
-});
-
-// @route   DELETE /api/admin/delete-question-image/:filename
-// @desc    Delete a question image
-// @access  Admin
-router.delete('/delete-question-image/:filename', async (req, res) => {
-    try {
-        const { filename } = req.params;
-        // The filename parameter might be "codetunisiepro%2Fimage". Decode it.
-        const publicId = decodeURIComponent(filename);
-
-        await cloudinary.uploader.destroy(publicId);
-
-        res.json({
-            success: true,
-            message: 'Image supprimée avec succès (Cloudinary)'
-        });
-    } catch (error) {
-        console.error('Delete error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Erreur lors de la suppression de l\'image',
-            error: error.message
-        });
-    }
 });
 
 module.exports = router;

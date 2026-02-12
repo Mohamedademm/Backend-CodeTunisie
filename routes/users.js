@@ -3,17 +3,33 @@ const router = express.Router();
 const User = require('../models/User');
 const TestAttempt = require('../models/TestAttempt');
 const { requireAuth } = require('../middleware/auth');
+const { storage, cloudinary } = require('../config/cloudinary');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
 
-// @route   GET /api/users/profile
-// @desc    Get user profile with progress
-// @access  Private
+const upload = multer({
+    storage: storage,
+    limits: { fileSize: 5 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+        const allowedTypes = /jpeg|jpg|png|gif|webp/;
+        const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+        const mimetype = allowedTypes.test(file.mimetype);
+
+        if (mimetype && extname) {
+            return cb(null, true);
+        } else {
+            cb(new Error('Seules les images sont autorisées (jpeg, jpg, png, gif, webp)'));
+        }
+    }
+});
+
 router.get('/profile', requireAuth, async (req, res) => {
     try {
         const user = await User.findById(req.user._id)
             .populate('coursesCompleted', 'title category')
             .select('-password -refreshToken');
 
-        // Get test statistics
         const testAttempts = await TestAttempt.find({ user: req.user._id })
             .populate('test', 'title category')
             .sort({ createdAt: -1 })
@@ -45,9 +61,6 @@ router.get('/profile', requireAuth, async (req, res) => {
     }
 });
 
-// @route   PUT /api/users/profile
-// @desc    Update user profile
-// @access  Private
 router.put('/profile', requireAuth, async (req, res) => {
     try {
         const { name, phone, avatar } = req.body;
@@ -77,31 +90,6 @@ router.put('/profile', requireAuth, async (req, res) => {
     }
 });
 
-// Configure Multer for avatar uploads
-const { storage, cloudinary } = require('../config/cloudinary');
-const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
-
-const upload = multer({
-    storage: storage,
-    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB max
-    fileFilter: (req, file, cb) => {
-        const allowedTypes = /jpeg|jpg|png|gif|webp/;
-        const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-        const mimetype = allowedTypes.test(file.mimetype);
-
-        if (mimetype && extname) {
-            return cb(null, true);
-        } else {
-            cb(new Error('Seules les images sont autorisées (jpeg, jpg, png, gif, webp)'));
-        }
-    }
-});
-
-// @route   POST /api/users/avatar
-// @desc    Upload user avatar
-// @access  Private
 router.post('/avatar', requireAuth, upload.single('avatar'), async (req, res) => {
     try {
         if (!req.file) {
@@ -111,23 +99,18 @@ router.post('/avatar', requireAuth, upload.single('avatar'), async (req, res) =>
             });
         }
 
-        // Delete old avatar if exists
         const user = await User.findById(req.user._id);
         if (user.avatar) {
-            // Check if it's a Cloudinary URL
             if (user.avatar.includes('cloudinary')) {
-                // Extract public ID from URL
-                // URL format: .../upload/v12345/folder/filename.jpg
                 const splitUrl = user.avatar.split('/');
                 const filename = splitUrl[splitUrl.length - 1];
-                const publicId = 'codetunisiepro/' + filename.split('.')[0]; // Assuming folder is codetunisiepro
+                const publicId = 'codetunisiepro/' + filename.split('.')[0];
                 try {
                     await cloudinary.uploader.destroy(publicId);
                 } catch (err) {
                     console.error('Failed to delete old Cloudinary avatar:', err);
                 }
             }
-            // Check if it's a local file (legacy support)
             else if (user.avatar.startsWith('/uploads/')) {
                 const oldAvatarPath = path.join(__dirname, '..', user.avatar);
                 if (fs.existsSync(oldAvatarPath)) {
@@ -140,7 +123,6 @@ router.post('/avatar', requireAuth, upload.single('avatar'), async (req, res) =>
             }
         }
 
-        // Update user with new avatar path (Cloudinary URL)
         const avatarUrl = req.file.path;
         user.avatar = avatarUrl;
         await user.save();
@@ -170,9 +152,6 @@ router.post('/avatar', requireAuth, upload.single('avatar'), async (req, res) =>
     }
 });
 
-// @route   GET /api/users/progress
-// @desc    Get detailed user progress
-// @access  Private
 router.get('/progress', requireAuth, async (req, res) => {
     try {
         const user = await User.findById(req.user._id)
@@ -182,7 +161,6 @@ router.get('/progress', requireAuth, async (req, res) => {
                 populate: { path: 'test', select: 'title category' },
             });
 
-        // Calculate progress by category
         const testsByCategory = {};
         for (const attempt of user.testsAttempted) {
             const category = attempt.test.category;
@@ -199,7 +177,6 @@ router.get('/progress', requireAuth, async (req, res) => {
             testsByCategory[category].scores.push(attempt.score);
         }
 
-        // Calculate average scores
         Object.keys(testsByCategory).forEach(category => {
             const scores = testsByCategory[category].scores;
             testsByCategory[category].averageScore =
@@ -224,14 +201,10 @@ router.get('/progress', requireAuth, async (req, res) => {
     }
 });
 
-// @route   PUT /api/users/change-password
-// @desc    Change user password
-// @access  Private
 router.put('/change-password', requireAuth, async (req, res) => {
     try {
         const { currentPassword, newPassword } = req.body;
 
-        // Validate input
         if (!currentPassword || !newPassword) {
             return res.status(400).json({
                 success: false,
@@ -246,10 +219,8 @@ router.put('/change-password', requireAuth, async (req, res) => {
             });
         }
 
-        // Get user with password
         const user = await User.findById(req.user._id).select('+password');
 
-        // Verify current password
         const isPasswordValid = await user.comparePassword(currentPassword);
         if (!isPasswordValid) {
             return res.status(401).json({
@@ -258,7 +229,6 @@ router.put('/change-password', requireAuth, async (req, res) => {
             });
         }
 
-        // Update password
         user.password = newPassword;
         await user.save();
 
