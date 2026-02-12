@@ -21,9 +21,16 @@ const questionSchema = new mongoose.Schema(
             type: Number,
             required: [true, 'La réponse correcte est requise'],
             min: 0,
+            max: 3,
             validate: {
                 validator: function (v) {
-                    return v < this.options.length;
+                    // For findByIdAndUpdate, this.options might not be available
+                    // In that case, validate that v is in valid range (0-3)
+                    if (this.options && Array.isArray(this.options)) {
+                        return v >= 0 && v < this.options.length;
+                    }
+                    // Fallback: accept 0-3 for update operations
+                    return v >= 0 && v <= 3;
                 },
                 message: 'L\'index de la réponse correcte est invalide',
             },

@@ -10,12 +10,17 @@ const videoSchema = new mongoose.Schema(
         },
         description: {
             type: String,
-            required: [true, 'La description est requise'],
             maxlength: [500, 'La description ne peut pas dépasser 500 caractères'],
+            default: '',
         },
         videoUrl: {
             type: String,
-            required: [true, 'L\'URL de la vidéo est requise'],
+            required: [true, "L'URL de la vidéo est requise"],
+        },
+        videoType: {
+            type: String,
+            enum: ['url', 'upload'],
+            default: 'url',
         },
         thumbnail: {
             type: String,
@@ -28,7 +33,7 @@ const videoSchema = new mongoose.Schema(
         },
         duration: {
             type: String, // e.g., "10:30"
-            required: [true, 'La durée est requise'],
+            default: '',
         },
         isPremium: {
             type: Boolean,

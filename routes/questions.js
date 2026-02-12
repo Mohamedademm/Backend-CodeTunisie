@@ -64,6 +64,33 @@ router.get('/:id', requireAuth, requireAdmin, async (req, res) => {
 // @access  Private/Admin
 router.post('/', requireAuth, requireAdmin, async (req, res) => {
     try {
+        // Normalize image data to prevent corruption
+        if (req.body.image) {
+            // If image is a string, convert to object format
+            if (typeof req.body.image === 'string') {
+                if (req.body.image === '[object Object]' || req.body.image.trim() === '') {
+                    // Invalid/corrupted data - set to empty object
+                    req.body.image = { url: '', filename: '', size: 0 };
+                } else {
+                    // Valid URL string - convert to object
+                    req.body.image = {
+                        url: req.body.image,
+                        filename: '',
+                        size: 0
+                    };
+                }
+            }
+            // If image is already an object, ensure it has required fields
+            else if (typeof req.body.image === 'object' && req.body.image !== null) {
+                req.body.image = {
+                    url: req.body.image.url || '',
+                    filename: req.body.image.filename || '',
+                    size: req.body.image.size || 0,
+                    uploadedAt: req.body.image.uploadedAt || undefined
+                };
+            }
+        }
+
         const question = await Question.create(req.body);
 
         res.status(201).json({
@@ -86,6 +113,29 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
 // @access  Private/Admin
 router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
     try {
+        // Normalize image data to prevent corruption (same as POST)
+        if (req.body.image) {
+            if (typeof req.body.image === 'string') {
+                if (req.body.image === '[object Object]' || req.body.image.trim() === '') {
+                    req.body.image = { url: '', filename: '', size: 0 };
+                } else {
+                    req.body.image = {
+                        url: req.body.image,
+                        filename: '',
+                        size: 0
+                    };
+                }
+            }
+            else if (typeof req.body.image === 'object' && req.body.image !== null) {
+                req.body.image = {
+                    url: req.body.image.url || '',
+                    filename: req.body.image.filename || '',
+                    size: req.body.image.size || 0,
+                    uploadedAt: req.body.image.uploadedAt || undefined
+                };
+            }
+        }
+
         const question = await Question.findByIdAndUpdate(
             req.params.id,
             req.body,

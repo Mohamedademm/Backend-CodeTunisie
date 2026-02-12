@@ -42,8 +42,26 @@ const compression = require('compression');
 app.use(compression());
 
 // CORS configuration
+// CORS configuration
 const corsOptions = {
-    origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+    origin: function (origin, callback) {
+        const allowedOrigins = [
+            process.env.FRONTEND_URL,
+            'http://localhost:5173',
+            'http://localhost:5174',
+            'http://localhost:3000',
+            'http://localhost:5175'
+        ].filter(Boolean);
+
+        // Allow requests with no origin (like mobile apps or curl requests)
+        if (!origin) return callback(null, true);
+
+        if (allowedOrigins.indexOf(origin) !== -1 || origin.startsWith('http://localhost:')) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
     credentials: true,
     optionsSuccessStatus: 200,
 };
@@ -77,6 +95,16 @@ app.get('/', (req, res) => {
         success: true,
         message: 'Bienvenue sur l\'API CodeTunisiePro',
         version: '1.0.0',
+    });
+});
+
+// Health check endpoint for Docker
+app.get('/api/health', (req, res) => {
+    res.status(200).json({
+        success: true,
+        status: 'healthy',
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime(),
     });
 });
 
