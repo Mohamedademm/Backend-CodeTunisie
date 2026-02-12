@@ -78,44 +78,25 @@ router.put('/profile', requireAuth, async (req, res) => {
 });
 
 // Configure Multer for avatar uploads
+const { storage, cloudinary } = require('../config/cloudinary');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 
-// Ensure uploads directory exists
-const uploadsDir = path.join(__dirname, '../uploads/avatars');
-if (!fs.existsSync(uploadsDir)) {
-    fs.mkdirSync(uploadsDir, { recursive: true });
-}
-
-// Configure storage
-const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        cb(null, uploadsDir);
-    },
-    filename: function (req, file, cb) {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        cb(null, 'avatar-' + req.user._id + '-' + uniqueSuffix + path.extname(file.originalname));
-    }
-});
-
-// File filter for images only
-const fileFilter = (req, file, cb) => {
-    const allowedTypes = /jpeg|jpg|png|gif|webp/;
-    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-    const mimetype = allowedTypes.test(file.mimetype);
-
-    if (mimetype && extname) {
-        return cb(null, true);
-    } else {
-        cb(new Error('Seules les images sont autorisées (jpeg, jpg, png, gif, webp)'));
-    }
-};
-
 const upload = multer({
     storage: storage,
     limits: { fileSize: 5 * 1024 * 1024 }, // 5MB max
-    fileFilter: fileFilter
+    fileFilter: (req, file, cb) => {
+        const allowedTypes = /jpeg|jpg|png|gif|webp/;
+        const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+        const mimetype = allowedTypes.test(file.mimetype);
+
+        if (mimetype && extname) {
+            return cb(null, true);
+        } else {
+            cb(new Error('Seules les images sont autorisées (jpeg, jpg, png, gif, webp)'));
+        }
+    }
 });
 
 // @route   POST /api/users/avatar
@@ -132,15 +113,35 @@ router.post('/avatar', requireAuth, upload.single('avatar'), async (req, res) =>
 
         // Delete old avatar if exists
         const user = await User.findById(req.user._id);
-        if (user.avatar && user.avatar.startsWith('/uploads/')) {
-            const oldAvatarPath = path.join(__dirname, '..', user.avatar);
-            if (fs.existsSync(oldAvatarPath)) {
-                fs.unlinkSync(oldAvatarPath);
+        if (user.avatar) {
+            // Check if it's a Cloudinary URL
+            if (user.avatar.includes('cloudinary')) {
+                // Extract public ID from URL
+                // URL format: .../upload/v12345/folder/filename.jpg
+                const splitUrl = user.avatar.split('/');
+                const filename = splitUrl[splitUrl.length - 1];
+                const publicId = 'codetunisiepro/' + filename.split('.')[0]; // Assuming folder is codetunisiepro
+                try {
+                    await cloudinary.uploader.destroy(publicId);
+                } catch (err) {
+                    console.error('Failed to delete old Cloudinary avatar:', err);
+                }
+            }
+            // Check if it's a local file (legacy support)
+            else if (user.avatar.startsWith('/uploads/')) {
+                const oldAvatarPath = path.join(__dirname, '..', user.avatar);
+                if (fs.existsSync(oldAvatarPath)) {
+                    try {
+                        fs.unlinkSync(oldAvatarPath);
+                    } catch (err) {
+                        console.error('Failed to delete old local avatar:', err);
+                    }
+                }
             }
         }
 
-        // Update user with new avatar path
-        const avatarUrl = `/uploads/avatars/${req.file.filename}`;
+        // Update user with new avatar path (Cloudinary URL)
+        const avatarUrl = req.file.path;
         user.avatar = avatarUrl;
         await user.save();
 

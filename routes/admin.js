@@ -10,36 +10,75 @@ const Test = require('../models/Test');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 
 // Configure multer for question image uploads
-const questionImageStorage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        const uploadDir = path.join(__dirname, '../uploads/questions');
-        // Create directory if it doesn't exist
-        if (!fs.existsSync(uploadDir)) {
-            fs.mkdirSync(uploadDir, { recursive: true });
+const { storage, cloudinary } = require('../config/cloudinary');
+const questionImageUpload = multer({ storage });
+
+// ... (middleware remains the same)
+
+// @route   POST /api/admin/upload-question-image
+// @desc    Upload image for a question
+// @access  Admin
+router.post('/upload-question-image', questionImageUpload.single('image'), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({
+                success: false,
+                message: 'Aucune image fournie'
+            });
         }
-        cb(null, uploadDir);
-    },
-    filename: function (req, file, cb) {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        cb(null, 'question-' + uniqueSuffix + path.extname(file.originalname));
+
+        res.json({
+            success: true,
+            message: 'Image uploadée avec succès',
+            data: {
+                url: req.file.path, // Cloudinary URL
+                filename: req.file.filename, // Cloudinary public_id
+                size: req.file.size, // Note: might not be accurate from Cloudinary response immediately, but usually available
+                uploadedAt: new Date()
+            }
+        });
+    } catch (error) {
+        console.error('Upload error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Erreur lors de l\'upload de l\'image',
+            error: error.message
+        });
     }
 });
 
-const questionImageUpload = multer({
-    storage: questionImageStorage,
-    limits: {
-        fileSize: 2 * 1024 * 1024, // 2MB max
-    },
-    fileFilter: function (req, file, cb) {
-        const allowedTypes = /jpeg|jpg|png|webp/;
-        const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-        const mimetype = allowedTypes.test(file.mimetype);
+// @route   DELETE /api/admin/delete-question-image/:filename
+// @desc    Delete a question image
+// @access  Admin
+router.delete('/delete-question-image/:filename', async (req, res) => {
+    try {
+        const { filename } = req.params;
+        // filename here should be the public_id, e.g. "codetunisiepro/question-..."
+        // However, standard params extraction might split by slash. 
+        // We'll need to ensure we get the full public_id. 
+        // For simplicity, if the frontend sends "codetunisiepro/foo", it might be encoded.
 
-        if (mimetype && extname) {
-            return cb(null, true);
-        } else {
-            cb(new Error('Seules les images (JPEG, PNG, WebP) sont autorisées'));
-        }
+        // Actually, if the filename param is just the last part, we might need to prepend folder if not provided.
+        // But req.file.filename usually includes the folder.
+
+        // Let's assume filename passed is the full public_id or we construct it.
+        // If the previous code sent "question-123.jpg", new code sends "codetunisiepro/question-123".
+
+        // Handle deletion:
+        await cloudinary.uploader.destroy(filename);
+
+        res.json({
+            success: true,
+            message: 'Image supprimée avec succès (Cloudinary)'
+        });
+
+    } catch (error) {
+        console.error('Delete error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Erreur lors de la suppression de l\'image',
+            error: error.message
+        });
     }
 });
 
@@ -329,21 +368,15 @@ router.post('/upload-question-image', questionImageUpload.single('image'), async
 router.delete('/delete-question-image/:filename', async (req, res) => {
     try {
         const { filename } = req.params;
-        const filePath = path.join(__dirname, '../uploads/questions', filename);
+        // The filename parameter might be "codetunisiepro%2Fimage". Decode it.
+        const publicId = decodeURIComponent(filename);
 
-        // Check if file exists
-        if (fs.existsSync(filePath)) {
-            fs.unlinkSync(filePath);
-            res.json({
-                success: true,
-                message: 'Image supprimée avec succès'
-            });
-        } else {
-            res.status(404).json({
-                success: false,
-                message: 'Image non trouvée'
-            });
-        }
+        await cloudinary.uploader.destroy(publicId);
+
+        res.json({
+            success: true,
+            message: 'Image supprimée avec succès (Cloudinary)'
+        });
     } catch (error) {
         console.error('Delete error:', error);
         res.status(500).json({

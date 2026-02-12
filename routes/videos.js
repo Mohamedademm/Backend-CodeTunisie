@@ -7,47 +7,53 @@ const Video = require('../models/Video');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 
 // --- Multer configuration for video uploads ---
-const videoUploadDir = path.join(__dirname, '..', 'uploads', 'videos');
+// --- Multer configuration for video uploads ---
+const { storage, cloudinary } = require('../config/cloudinary');
 
-// Ensure the upload directory exists
-if (!fs.existsSync(videoUploadDir)) {
-    fs.mkdirSync(videoUploadDir, { recursive: true });
-}
+// Helper to delete from Cloudinary
+const deleteFromCloudinary = async (url, resourceType = 'video') => {
+    if (!url || !url.includes('cloudinary')) return;
+    try {
+        // Extract public ID: .../upload/v123/codetunisiepro/filename.mp4 -> codetunisiepro/filename
+        const splitUrl = url.split('/');
+        const filenameWithExt = splitUrl[splitUrl.length - 1];
+        const folder = splitUrl[splitUrl.length - 2]; // 'codetunisiepro'
+        const filename = filenameWithExt.split('.')[0];
+        const publicId = `${folder}/${filename}`;
 
-const videoStorage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        cb(null, videoUploadDir);
-    },
-    filename: (req, file, cb) => {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-        const ext = path.extname(file.originalname);
-        cb(null, `video-${uniqueSuffix}${ext}`);
-    },
-});
+        await cloudinary.uploader.destroy(publicId, { resource_type: resourceType });
+    } catch (error) {
+        console.error('Error deleting from Cloudinary:', error);
+    }
+};
 
-const videoFileFilter = (req, file, cb) => {
-    const allowedMimes = [
-        'video/mp4',
-        'video/avi',
-        'video/x-msvideo',
-        'video/mov',
-        'video/quicktime',
-        'video/webm',
-        'video/x-matroska',
-        'video/mkv',
-        'video/mpeg',
-        'video/ogg',
-    ];
-    if (allowedMimes.includes(file.mimetype)) {
-        cb(null, true);
-    } else {
-        cb(new Error(`Type de fichier non supporté: ${file.mimetype}. Formats acceptés: MP4, AVI, MOV, WebM, MKV, MPEG, OGG`), false);
+// Helper to delete local file (legacy)
+const deleteLocalFile = (url) => {
+    if (!url || !url.startsWith('/uploads/')) return;
+    const filePath = path.join(__dirname, '..', url);
+    if (fs.existsSync(filePath)) {
+        try {
+            fs.unlinkSync(filePath);
+        } catch (err) {
+            console.error('Error deleting local file:', err);
+        }
     }
 };
 
 const videoUpload = multer({
-    storage: videoStorage,
-    fileFilter: videoFileFilter,
+    storage: storage, // Use Cloudinary storage
+    fileFilter: (req, file, cb) => {
+        const allowedMimes = [
+            'video/mp4', 'video/avi', 'video/x-msvideo', 'video/mov',
+            'video/quicktime', 'video/webm', 'video/x-matroska',
+            'video/mkv', 'video/mpeg', 'video/ogg'
+        ];
+        if (allowedMimes.includes(file.mimetype)) {
+            cb(null, true);
+        } else {
+            cb(new Error(`Type de fichier non supporté: ${file.mimetype}. Formats acceptés: MP4, AVI, MOV, WebM, MKV, MPEG, OGG`), false);
+        }
+    },
     limits: {
         fileSize: 100 * 1024 * 1024, // 100 MB
     },
@@ -129,11 +135,17 @@ router.post('/', requireAuth, requireAdmin, videoUpload.single('videoFile'), asy
         };
 
         if (req.file) {
-            // File was uploaded
+            // File was uploaded to Cloudinary
             videoData.videoType = 'upload';
-            videoData.videoUrl = `/uploads/videos/${req.file.filename}`;
+            videoData.videoUrl = req.file.path; // Cloudinary URL
+
+            // Auto-generate thumbnail if not provided
+            if (!videoData.thumbnail) {
+                // Cloudinary allows getting a thumbnail by changing extension to .jpg
+                // Example: .../video/upload/v123/myvideo.mp4 -> .../video/upload/v123/myvideo.jpg
+                videoData.thumbnail = req.file.path.replace(/\.[^/.]+$/, ".jpg");
+            }
         } else if (videoUrl) {
-            // URL provided
             videoData.videoType = 'url';
             videoData.videoUrl = videoUrl;
         } else {
@@ -152,12 +164,9 @@ router.post('/', requireAuth, requireAdmin, videoUpload.single('videoFile'), asy
         });
     } catch (error) {
         console.error('Create video error:', error);
-        // If there was an uploaded file and an error occurred, clean it up
-        if (req.file) {
-            const filePath = path.join(videoUploadDir, req.file.filename);
-            if (fs.existsSync(filePath)) {
-                fs.unlinkSync(filePath);
-            }
+        // If upload success but DB failure, try to delete from Cloudinary
+        if (req.file && req.file.filename) {
+            await cloudinary.uploader.destroy(req.file.filename, { resource_type: 'video' });
         }
         res.status(500).json({
             success: false,
@@ -186,22 +195,18 @@ router.put('/:id', requireAuth, requireAdmin, videoUpload.single('videoFile'), a
         }
 
         if (req.file) {
-            // New file uploaded — delete old file if it was an upload
+            // New file uploaded — delete old file
             if (existingVideo.videoType === 'upload' && existingVideo.videoUrl) {
-                const oldFilePath = path.join(__dirname, '..', existingVideo.videoUrl);
-                if (fs.existsSync(oldFilePath)) {
-                    fs.unlinkSync(oldFilePath);
-                }
+                await deleteFromCloudinary(existingVideo.videoUrl, 'video');
+                deleteLocalFile(existingVideo.videoUrl);
             }
             updateData.videoType = 'upload';
-            updateData.videoUrl = `/uploads/videos/${req.file.filename}`;
+            updateData.videoUrl = req.file.path;
         } else if (updateData.videoUrl && updateData.videoUrl !== existingVideo.videoUrl) {
             // URL changed — delete old file if it was an upload
             if (existingVideo.videoType === 'upload' && existingVideo.videoUrl) {
-                const oldFilePath = path.join(__dirname, '..', existingVideo.videoUrl);
-                if (fs.existsSync(oldFilePath)) {
-                    fs.unlinkSync(oldFilePath);
-                }
+                await deleteFromCloudinary(existingVideo.videoUrl, 'video');
+                deleteLocalFile(existingVideo.videoUrl);
             }
             updateData.videoType = 'url';
         }
@@ -240,13 +245,10 @@ router.delete('/:id', requireAuth, requireAdmin, async (req, res) => {
             });
         }
 
-        // Delete the physical file if it was an upload
+        // Delete the file if it was an upload
         if (video.videoType === 'upload' && video.videoUrl) {
-            const filePath = path.join(__dirname, '..', video.videoUrl);
-            if (fs.existsSync(filePath)) {
-                fs.unlinkSync(filePath);
-                console.log(`🗑️ Deleted video file: ${filePath}`);
-            }
+            await deleteFromCloudinary(video.videoUrl, 'video');
+            deleteLocalFile(video.videoUrl);
         }
 
         await Video.findByIdAndDelete(req.params.id);
