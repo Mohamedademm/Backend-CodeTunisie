@@ -60,6 +60,9 @@ app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Trust Proxy (Required for Render/Heroku/Vercel)
+app.set('trust proxy', 1);
+
 const { apiLimiter } = require('./middleware/rateLimiter');
 app.use('/api/', apiLimiter);
 

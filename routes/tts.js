@@ -46,8 +46,27 @@ router.post('/speak', async (req, res) => {
         response.data.pipe(res);
 
     } catch (error) {
-        console.error('TTS API Error:', error?.response?.data || error.message);
-        res.status(500).json({ message: 'Error generating speech' });
+        // Handle Axios Stream Error specifically
+        if (error.response && error.response.data) {
+            const stream = error.response.data;
+            // Check if it's a stream and try to read it
+            if (typeof stream.on === 'function') {
+                let errorData = '';
+                stream.on('data', chunk => errorData += chunk);
+                stream.on('end', () => {
+                    console.error('TTS API Stream Error:', errorData);
+                });
+            } else {
+                console.error('TTS API Error Response:', JSON.stringify(error.response.data));
+            }
+        } else {
+            console.error('TTS API Error:', error.message);
+        }
+
+        // Prevent sending headers twice if already sent
+        if (!res.headersSent) {
+            res.status(500).json({ message: 'Error generating speech' });
+        }
     }
 });
 
