@@ -93,6 +93,7 @@ app.get('/api/health', (req, res) => {
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/courses', require('./routes/courses'));
 app.use('/api/videos', require('./routes/videos'));
+app.use('/api/tts', require('./routes/tts')); // New TTS Route
 app.use('/api/tests', require('./routes/tests'));
 app.use('/api/questions', require('./routes/questions'));
 app.use('/api/users', require('./routes/users'));
