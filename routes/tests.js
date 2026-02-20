@@ -42,10 +42,14 @@ router.get('/', async (req, res) => {
 // @access  Private
 router.get('/:id', requireAuth, async (req, res) => {
     try {
+        // For Admin users, we want to see the correct answers and explanations (for editing)
+        // For regular users, we hide them to prevent cheating
+        const projection = req.user.role === 'admin' ? '' : '-correctAnswer -explanation';
+
         const test = await Test.findById(req.params.id)
             .populate({
                 path: 'questions',
-                select: '-correctAnswer -explanation', // Don't send answers initially
+                select: projection,
             });
 
         if (!test) {
