@@ -63,6 +63,28 @@ const userSchema = new mongoose.Schema(
             type: mongoose.Schema.Types.ObjectId,
             ref: 'TestAttempt',
         }],
+        // Gamification
+        xp: {
+            type: Number,
+            default: 0,
+        },
+        level: {
+            type: Number,
+            default: 1,
+        },
+        streak: {
+            type: Number,
+            default: 0,
+        },
+        lastActivityDate: {
+            type: Date,
+        },
+        badges: [{
+            id: { type: String, required: true },
+            name: { type: String, required: true },
+            icon: { type: String, default: 'award' },
+            earnedDate: { type: Date, default: Date.now },
+        }],
         // Refresh token for JWT
         refreshToken: {
             type: String,

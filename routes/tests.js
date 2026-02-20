@@ -4,6 +4,7 @@ const Test = require('../models/Test');
 const TestAttempt = require('../models/TestAttempt');
 const Question = require('../models/Question');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
+const { calcXpEarned, calcLevel, getLevelTitle, updateStreak, checkAndAwardBadges } = require('../utils/gamification');
 
 // @route   GET /api/tests
 // @desc    Get all tests
@@ -149,18 +150,33 @@ router.post('/:id/submit', requireAuth, async (req, res) => {
 
         // Add to user's test attempts
         req.user.testsAttempted.push(testAttempt._id);
+
+        // === GAMIFICATION ===
+        const oldXp = req.user.xp || 0;
+        const oldLevel = calcLevel(oldXp);
+        const xpEarned = calcXpEarned(passed, score);
+        req.user.xp = oldXp + xpEarned;
+        req.user.level = calcLevel(req.user.xp);
+        const newLevel = req.user.level;
+        updateStreak(req.user);
+
+        // Fetch all previous attempts to check badge conditions
+        const allAttempts = await TestAttempt.find({ user: req.user._id });
+        const newBadges = checkAndAwardBadges(req.user, allAttempts);
+
         await req.user.save();
+
+        // Find next test (same category, different test)
+        const nextTest = await Test.findOne({
+            _id: { $ne: test._id },
+            category: test.category,
+            isPublished: true,
+        }).select('_id title category duration passThreshold').lean();
 
         // Populate the test attempt with full question details
         const populatedAttempt = await TestAttempt.findById(testAttempt._id)
-            .populate({
-                path: 'test',
-                select: 'title description passThreshold',
-            })
-            .populate({
-                path: 'answers.question',
-                select: 'question options correctAnswer explanation image',
-            });
+            .populate({ path: 'test', select: 'title description passThreshold' })
+            .populate({ path: 'answers.question', select: 'question options correctAnswer explanation image' });
 
         res.json({
             success: true,
@@ -170,6 +186,17 @@ router.post('/:id/submit', requireAuth, async (req, res) => {
             passed,
             correctCount,
             totalQuestions: test.questions.length,
+            // Gamification
+            xpEarned,
+            oldXp,
+            newTotalXp: req.user.xp,
+            oldLevel,
+            newLevel,
+            leveledUp: newLevel > oldLevel,
+            newLevelTitle: getLevelTitle(newLevel),
+            newBadges,
+            // Navigation
+            nextTest: nextTest ? { id: nextTest._id, title: nextTest.title, category: nextTest.category, duration: nextTest.duration } : null,
         });
     } catch (error) {
         console.error('Submit test error:', error);
